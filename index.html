@@ -1,16 +1,601 @@
-<!doctype html>
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ASCII Lilies</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title></title>
+
 <style>
-  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-  canvas { display: block; width: 100vw; height: 100vh; cursor: pointer; }
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+}
+
+canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    image-rendering: pixelated;
+}
 </style>
 </head>
+
 <body>
-<canvas id="screen"></canvas>
-<script src="bouquet.js"></script>
+<canvas id="garden"></canvas>
+
+<script>
+const canvas = document.getElementById("garden");
+const ctx = canvas.getContext("2d");
+
+const W = 480;
+const H = 600;
+
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    scale = Math.min(canvas.width / W, canvas.height / H);
+    offsetX = (canvas.width - W * scale) / 2;
+    offsetY = (canvas.height - H * scale) / 2;
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+// --------------------------------------
+// RANDOMNESS
+// --------------------------------------
+
+function random(seed) {
+    const n = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+    return n - Math.floor(n);
+}
+
+function ease(t) {
+    t = Math.max(0, Math.min(1, t));
+    return t * t * (3 - 2 * t);
+}
+
+// --------------------------------------
+// CREATE PIXEL FLOWER SPRITES
+// --------------------------------------
+
+function makeFlower(type) {
+    const size = 80;
+
+    const mask = document.createElement("canvas");
+    mask.width = size;
+    mask.height = size;
+
+    const m = mask.getContext("2d");
+    m.translate(40, 40);
+
+    if (type === "sunflower") {
+        for (let i = 0; i < 20; i++) {
+            m.save();
+            m.rotate(i * Math.PI * 2 / 20);
+
+            m.fillStyle = "#fff";
+            m.beginPath();
+            m.ellipse(0, -22, 6, 21, 0, 0, Math.PI * 2);
+            m.fill();
+
+            m.restore();
+        }
+
+        m.fillStyle = "#fff";
+        m.beginPath();
+        m.arc(0, 0, 17, 0, Math.PI * 2);
+        m.fill();
+    }
+
+    if (type === "daisy") {
+        for (let i = 0; i < 16; i++) {
+            m.save();
+            m.rotate(i * Math.PI * 2 / 16);
+
+            m.fillStyle = "#fff";
+            m.beginPath();
+            m.ellipse(0, -19, 5, 17, 0, 0, Math.PI * 2);
+            m.fill();
+
+            m.restore();
+        }
+
+        m.fillStyle = "#fff";
+        m.beginPath();
+        m.arc(0, 0, 11, 0, Math.PI * 2);
+        m.fill();
+    }
+
+    if (type === "rose") {
+        const layers = [
+            { count: 11, radius: 17, width: 13, height: 24 },
+            { count: 9, radius: 11, width: 12, height: 20 },
+            { count: 7, radius: 5, width: 10, height: 16 }
+        ];
+
+        layers.forEach((layer, index) => {
+            for (let i = 0; i < layer.count; i++) {
+                m.save();
+
+                m.rotate(i * Math.PI * 2 / layer.count + index * 0.4);
+                m.translate(0, -layer.radius);
+
+                m.fillStyle = "#fff";
+                m.beginPath();
+                m.ellipse(
+                    0, 0,
+                    layer.width,
+                    layer.height,
+                    0, 0, Math.PI * 2
+                );
+                m.fill();
+
+                m.restore();
+            }
+        });
+
+        m.fillStyle = "#fff";
+        m.beginPath();
+        m.arc(0, 0, 8, 0, Math.PI * 2);
+        m.fill();
+    }
+
+    // Convert flower shapes into horizontal pixel stripes
+    const source = m.getImageData(0, 0, size, size);
+    const sprite = document.createElement("canvas");
+
+    sprite.width = size;
+    sprite.height = size;
+
+    const s = sprite.getContext("2d");
+    const output = s.createImageData(size, size);
+
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const index = (y * size + x) * 4;
+
+            if (source.data[index + 3] < 30) continue;
+            if (y % 3 === 0) continue;
+            if ((x + y) % 13 === 0) continue;
+
+            const dx = x - 40;
+            const dy = y - 40;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            let color;
+
+            if (type === "rose") {
+                const brightness = Math.max(0, Math.min(1, distance / 40));
+
+                color = [
+                    170 + brightness * 85,
+                    12 + brightness * 105,
+                    45 + brightness * 100
+                ];
+            }
+
+            if (type === "sunflower") {
+                if (distance < 17) {
+                    color = [105, 49, 19];
+                } else {
+                    color = [
+                        255,
+                        180 + random(x * 4 + y) * 70,
+                        30 + random(x + y * 3) * 55
+                    ];
+                }
+            }
+
+            if (type === "daisy") {
+                if (distance < 12) {
+                    color = [255, 205, 54];
+                } else {
+                    color = [
+                        220 + random(x + y) * 35,
+                        225 + random(x * 2 + y) * 30,
+                        220 + random(y * 3 + x) * 35
+                    ];
+                }
+            }
+
+            const sparkle = random(x * 17 + y * 31);
+
+            output.data[index] = Math.min(255, color[0] + sparkle * 12);
+            output.data[index + 1] = Math.min(255, color[1] + sparkle * 12);
+            output.data[index + 2] = Math.min(255, color[2] + sparkle * 12);
+            output.data[index + 3] = 255;
+        }
+    }
+
+    s.putImageData(output, 0, 0);
+    return sprite;
+}
+
+const sprites = {
+    rose: makeFlower("rose"),
+    sunflower: makeFlower("sunflower"),
+    daisy: makeFlower("daisy")
+};
+
+// --------------------------------------
+// CREATE A FULL BOUQUET OF FLOWERS
+// --------------------------------------
+
+const flowers = [];
+
+const rows = [
+    { y: 125, count: 5, width: 145 },
+    { y: 170, count: 6, width: 190 },
+    { y: 215, count: 7, width: 225 },
+    { y: 260, count: 8, width: 245 },
+    { y: 305, count: 8, width: 220 },
+    { y: 345, count: 7, width: 185 },
+    { y: 375, count: 5, width: 130 }
+];
+
+let flowerNumber = 0;
+
+rows.forEach((row, rowIndex) => {
+    for (let i = 0; i < row.count; i++) {
+        const spacing = row.width / Math.max(1, row.count - 1);
+
+        const x = W / 2 - row.width / 2
+            + i * spacing
+            + (random(flowerNumber + 10) - 0.5) * 18;
+
+        const y = row.y
+            + (random(flowerNumber + 20) - 0.5) * 22;
+
+        const types = [
+            "sunflower", "rose", "daisy",
+            "rose", "daisy", "sunflower",
+            "daisy", "rose", "sunflower"
+        ];
+
+        const type = types[
+            (flowerNumber * 2 + rowIndex) % types.length
+        ];
+
+        flowers.push({
+            x,
+            y,
+            type,
+            size: type === "sunflower" ? 29 :
+                  type === "rose" ? 26 : 23,
+            delay: flowerNumber * 100,
+            phase: random(flowerNumber + 70) * 6.28,
+            lean: (random(flowerNumber + 90) - 0.5) * 0.18
+        });
+
+        flowerNumber++;
+    }
+});
+
+// --------------------------------------
+// LONG, POINTED PIXEL LEAVES
+// --------------------------------------
+
+function drawLeaf(x, y, angle, length, time) {
+    ctx.save();
+
+    ctx.translate(x, y);
+
+    const sway = Math.sin(time / 900 + x) * 0.035;
+    ctx.rotate(angle + sway);
+
+    const width = length * 0.16;
+
+    // Dark outer silhouette
+    ctx.fillStyle = "#103820";
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(
+        length * 0.35, -width,
+        length, 0
+    );
+    ctx.quadraticCurveTo(
+        length * 0.45, width,
+        0, 0
+    );
+    ctx.fill();
+
+    // Main green surface
+    ctx.fillStyle = "#287b3e";
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(
+        length * 0.4, -width * 0.65,
+        length, 0
+    );
+    ctx.quadraticCurveTo(
+        length * 0.4, width * 0.65,
+        0, 0
+    );
+    ctx.fill();
+
+    // Bright central vein
+    ctx.strokeStyle = "#a1d77c";
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(length * 0.5, -1, length, 0);
+    ctx.stroke();
+
+    // Pixel highlights
+    ctx.fillStyle = "#b5e68a";
+
+    for (let i = 8; i < length; i += 7) {
+        ctx.fillRect(i, -1, 3, 2);
+    }
+
+    ctx.restore();
+}
+
+// --------------------------------------
+// DENSE FOLIAGE RISING FROM SCREEN BOTTOM
+// --------------------------------------
+
+const foliage = [];
+
+for (let i = 0; i < 85; i++) {
+    foliage.push({
+        x: 105 + random(i + 500) * 270,
+        length: 45 + random(i + 600) * 115,
+        angle: -Math.PI / 2
+            + (random(i + 700) - 0.5) * 1.15,
+        phase: random(i + 800) * 6.28,
+        delay: i * 18
+    });
+}
+
+function drawGreenery(time) {
+    foliage.forEach(leaf => {
+        const growth = ease((time - leaf.delay) / 3000);
+
+        if (growth <= 0) return;
+
+        const length = leaf.length * growth;
+
+        drawLeaf(
+            leaf.x,
+            H,
+            leaf.angle,
+            length,
+            time + leaf.phase
+        );
+    });
+}
+
+// --------------------------------------
+// GROWING STEMS FROM THE BOTTOM EDGE
+// --------------------------------------
+
+function drawStem(flower, progress, time) {
+    if (progress <= 0) return;
+
+    const sway = Math.sin(time / 900 + flower.phase) * 4;
+
+    const baseX = W / 2 + (flower.x - W / 2) * 0.15;
+
+    // All stems begin at the bottom of the screen
+    const baseY = H;
+
+    const endX = flower.x + sway;
+    const endY = flower.y + 5;
+
+    const currentX = baseX + (endX - baseX) * progress;
+    const currentY = baseY + (endY - baseY) * progress;
+
+    ctx.save();
+
+    ctx.strokeStyle = "#103d25";
+    ctx.lineWidth = 5;
+
+    ctx.beginPath();
+    ctx.moveTo(baseX, baseY);
+    ctx.quadraticCurveTo(
+        baseX + (endX - baseX) * 0.45 + sway,
+        baseY - 85,
+        currentX,
+        currentY
+    );
+    ctx.stroke();
+
+    ctx.strokeStyle = "#3b9450";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.moveTo(baseX, baseY);
+    ctx.quadraticCurveTo(
+        baseX + (endX - baseX) * 0.45 + sway,
+        baseY - 85,
+        currentX,
+        currentY
+    );
+    ctx.stroke();
+
+    // Small pointed leaves attached to the stems
+    if (progress > 0.25) {
+        const leafX = baseX + (endX - baseX) * 0.45;
+        const leafY = baseY + (endY - baseY) * 0.45;
+
+        drawLeaf(leafX, leafY, -0.5, 34, time);
+        drawLeaf(leafX, leafY + 25, 2.8, 28, time);
+    }
+
+    if (progress > 0.55) {
+        drawLeaf(currentX - 8, currentY + 30, 2.7, 23, time);
+    }
+
+    ctx.restore();
+}
+
+// --------------------------------------
+// FLOWER BUDS
+// --------------------------------------
+
+function drawBud(x, y, size) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    ctx.fillStyle = "#267443";
+
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size * 0.5, size, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#e8a9bb";
+
+    ctx.beginPath();
+    ctx.ellipse(0, -size * 0.25, size * 0.35, size * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// --------------------------------------
+// BLOOMING FLOWERS
+// --------------------------------------
+
+function drawFlower(flower, progress, time) {
+    const sway = Math.sin(time / 900 + flower.phase) * 3;
+
+    const x = flower.x + sway;
+    const y = flower.y;
+
+    const bloom = ease((progress - 0.35) / 0.65);
+
+    if (bloom < 0.1) {
+        drawBud(x, y, flower.size * 0.7);
+        return;
+    }
+
+    ctx.save();
+
+    ctx.translate(x, y);
+
+    ctx.rotate(
+        flower.lean +
+        Math.sin(time / 1000 + flower.phase) * 0.025
+    );
+
+    const size = flower.size * bloom;
+
+    ctx.shadowBlur = 15;
+
+    ctx.shadowColor =
+        flower.type === "rose" ? "#ff315c" :
+        flower.type === "sunflower" ? "#ffbd36" :
+        "#ffffff";
+
+    ctx.globalAlpha = 0.95;
+    ctx.imageSmoothingEnabled = false;
+
+    ctx.drawImage(
+        sprites[flower.type],
+        -size,
+        -size,
+        size * 2,
+        size * 2
+    );
+
+    ctx.restore();
+}
+
+// --------------------------------------
+// FLOATING GLOWING PARTICLES
+// --------------------------------------
+
+const particles = [];
+
+for (let i = 0; i < 65; i++) {
+    particles.push({
+        x: random(i + 1000) * W,
+        y: random(i + 2000) * H,
+        size: 1 + random(i + 3000) * 2,
+        speed: 0.1 + random(i + 4000) * 0.3,
+        phase: random(i + 5000) * 6.28
+    });
+}
+
+function drawParticles(time) {
+    particles.forEach(p => {
+        const y = (p.y - time * p.speed / 20 + H) % H;
+
+        const glow = 0.25 + Math.sin(time / 500 + p.phase) * 0.2;
+
+        ctx.fillStyle = `rgba(255, 240, 210, ${glow})`;
+        ctx.fillRect(p.x, y, p.size, p.size);
+    });
+}
+
+// --------------------------------------
+// MAIN ANIMATION
+// --------------------------------------
+
+const startTime = performance.now();
+
+function animate(now) {
+    requestAnimationFrame(animate);
+
+    const time = now - startTime;
+
+    ctx.setTransform(
+        scale, 0, 0, scale,
+        offsetX, offsetY
+    );
+
+    ctx.imageSmoothingEnabled = false;
+
+    // Pure black background
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, W, H);
+
+    // Floating particles
+    drawParticles(time);
+
+    // Stems grow upwards from the bottom
+    flowers.forEach(flower => {
+        const progress = ease(
+            (time - flower.delay) / 3800
+        );
+
+        drawStem(flower, progress, time);
+    });
+
+    // Long leaves grow upwards from the bottom edge
+    drawGreenery(time);
+
+    // Flowers bloom one after another
+    flowers.forEach(flower => {
+        const progress = ease(
+            (time - flower.delay) / 4300
+        );
+
+        drawFlower(flower, progress, time);
+    });
+}
+
+requestAnimationFrame(animate);
+
+</script>
 </body>
 </html>
